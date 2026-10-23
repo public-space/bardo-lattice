@@ -1,0 +1,6 @@
+c/bardo
+basic/bardo
+basic/bardo.exe
+__pycache__/
+# year folders created when you run an edition inside the repo
+/[0-9][0-9][0-9][0-9]/

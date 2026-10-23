@@ -1,0 +1,82 @@
+.TH BARDO 1 "October 2026" "bardo 1.0" "User Commands"
+.SH NAME
+bardo \- the year as a grid of day files, with a live 3D ASCII field
+.SH SYNOPSIS
+.B bardo
+[\fBprint\fR | \fBopen\fR [\fIYYYY-MM-DD\fR|\fBtoday\fR]]
+[\fB\-\-txt\fR] [\fB\-\-year\fR \fIN\fR] [\fB\-\-dir\fR \fIPATH\fR]
+.SH DESCRIPTION
+The first time
+.B bardo
+runs in a folder it creates a subfolder named for the year, holding one
+file per day (365, or 366 in a leap year) and a marker file
+.IR .bardo .
+Each file starts with a header line naming the day. Anything written
+below that line counts as the day's writing.
+.PP
+With no command,
+.B bardo
+opens an interactive browser. The grid view shows the year as seven
+rows (Monday to Sunday) by week columns. The field view renders every
+day as a point in a rotating 3D lattice; written days rise in proportion
+to how much was written.
+.SH COMMANDS
+.TP
+.B print
+Print the grid and the year's statistics, then exit.
+.TP
+.BR open " [\fIDATE\fR]"
+Open one day in the editor named by
+.B VISUAL
+or
+.BR EDITOR .
+The default is today.
+.SH OPTIONS
+.TP
+.B \-\-txt
+On the first run only, create plain-text
+.I .txt
+files instead of Markdown
+.I .md
+files.
+.TP
+.BI \-\-year " N"
+Work on another year's folder.
+.TP
+.BI \-\-dir " PATH"
+Keep the year folder in
+.I PATH
+instead of the current folder.
+.SH KEYS
+.TP
+Grid
+Arrows or \fBh j k l\fR move, \fB[\fR and \fB]\fR jump a month,
+Enter opens the day, \fBt\fR returns to today, \fBf\fR opens the field,
+\fBr\fR rescans the folder, \fBq\fR quits.
+.TP
+Field
+Arrows turn the lattice, \fB+\fR and \fB\-\fR zoom, space pauses the
+spin, \fBh j k l\fR move the cursor, Enter opens the day, \fBg\fR returns
+to the grid.
+.SH GLYPHS
+.nf
+@  today            .  not yet          o  passed, empty
++  under 50 words   *  under 250 words  #  250 words or more
+.fi
+.SH ENVIRONMENT
+.TP
+.BR VISUAL ", " EDITOR
+The editor used to open a day. Falls back to nano, then vi.
+.TP
+.B NO_COLOR
+If set, print mode uses no color.
+.SH FILES
+.TP
+.I ./YEAR/YYYY-MM-DD.md
+One file per day.
+.TP
+.I ./YEAR/.bardo
+Marks the folder as initialized and records the file format.
+.SH SEE ALSO
+The Python, Bash and BASIC editions in the same repository read and
+write the same folder.
