@@ -4,6 +4,14 @@ A writing program that places every session of writing inside a three-dimensiona
 
 Part of **GOOP**, an ongoing series of interchangeable-media works by Donnie Martinez.
 
+It comes in two forms: a **web app** (`index.html`) that divides the year into five-minute cells, and four **local editions** (Python, C, Bash, BASIC) that turn the year into one file per day in your terminal.
+
+## Documentation
+
+- **[Tutorial](docs/TUTORIAL.md)**: from cloning the repo to writing every day, with every command and flag explained.
+- **[How it works](docs/HOW-IT-WORKS.md)**: a tour of the code, including the 3D projection, raw terminal mode in C, the Makefile, and the Bash tricks.
+- **[File format](docs/FILE-FORMAT.md)**: the year-folder specification all four local editions share.
+
 ## The array
 
 The dimensions are generated from the clock: **days × 24 hours × 12 five-minute slots**. In 2026 that is 365 × 24 × 12 = 105,120 cells; leap years become 366 automatically, and a new year rebuilds the array. Every day of the year is present, including the days before you first opened the program. Each cell has an address such as `[295][15][09]` (day, hour, slot).
