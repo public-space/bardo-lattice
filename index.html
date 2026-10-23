@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bardo Lattice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Literata:opsz,wght@7..72,400;7..72,500&family=Major+Mono+Display&display=swap">
+<style>
+/* Layout: a sticky instrument header over three views. Write is a plain centered column;
+   Data is a year heatmap + day slice + cell inspector; Field is a fixed dark phosphor screen. */
+:root{
+  --paper:#e8e6e2; --panel:#f1efec; --ink:#1c1819; --mute:#675f60; --faint:#a29a99; --rule:#d2cdc8;
+  --accent:#8c1e29; --cold:#2d5a99; --cell-elapsed:#d7d2cd; --cell-future:#ece9e5;
+  --f-bg:#0b0607; --f-bone:#e8dbc9; --f-dim:#8a726b; --f-flesh:#ff8b78; --f-cold:#93b5ff; --f-now:#ffffff;
+  --display:"Major Mono Display","IBM Plex Mono",ui-monospace,monospace;
+  --body:"Literata",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#121011; --panel:#1a1617; --ink:#e7e0db; --mute:#9d9390; --faint:#5f5755; --rule:#2b2526;
+  --accent:#e2666d; --cold:#89aae6; --cell-elapsed:#2a2324; --cell-future:#171314; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#121011; --panel:#1a1617; --ink:#e7e0db; --mute:#9d9390; --faint:#5f5755; --rule:#2b2526;
+  --accent:#e2666d; --cold:#89aae6; --cell-elapsed:#2a2324; --cell-future:#171314; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.hdr{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border-bottom:1px solid var(--rule);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px}
+.hdr-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 20px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand h1{margin:0;font-family:var(--display);font-weight:400;font-size:1.35rem;letter-spacing:.02em;line-height:1.1}
+.readout{font-family:var(--mono);font-size:.72rem;color:var(--mute);font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:2px 12px}
+.readout b{font-weight:500;color:var(--ink)}
+.tabs{display:flex;gap:2px;border:1px solid var(--rule);border-radius:3px;padding:2px;background:var(--panel)}
+.tabs button{font-family:var(--mono);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;background:none;border:0;padding:6px 12px;border-radius:2px;cursor:pointer;color:var(--mute)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.tabs .sep{width:1px;background:var(--rule);margin:4px 4px}
+
+main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+
+/* WRITE */
+.write{max-width:68ch;margin:0 auto}
+.wbar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-block:14px;font-family:var(--mono);font-size:.72rem;color:var(--mute)}
+.wbar button,.btn{font-family:var(--mono);font-size:.74rem;background:none;border:1px solid var(--rule);border-radius:3px;padding:5px 10px;cursor:pointer;color:var(--ink)}
+.wbar button:hover,.btn:hover{border-color:var(--ink)}
+.blk{position:relative}
+.stamp{display:flex;align-items:center;justify-content:center;min-height:14px;position:relative;font-family:var(--mono);font-weight:300;font-size:.72rem;color:var(--faint);letter-spacing:.02em}
+.stamp.labeled{padding-block:22px 8px}
+.stamp .coord{position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:.62rem;opacity:.75;font-variant-numeric:tabular-nums}
+.stamp.labeled .coord{top:calc(50% + 7px)}
+.blk.open .stamp .coord::after{content:" open";color:var(--accent)}
+.ta{display:block;width:100%;resize:none;overflow:hidden;border:0;background:transparent;color:var(--ink);font-family:var(--body);font-size:1.06rem;line-height:1.72;padding:0;margin:0;min-height:1.72em}
+.ta:focus{outline:none}
+.ta::placeholder{color:var(--faint)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:.76rem;padding:8px 14px;border-radius:3px;z-index:20}
+.copybox{width:100%;height:160px;font-family:var(--mono);font-size:.75rem;margin-top:8px;background:var(--panel);color:var(--ink);border:1px solid var(--rule)}
+
+/* DATA */
+.data{max-width:1180px;margin:0 auto;padding-top:18px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:28px}
+@media (max-width:860px){.data{grid-template-columns:minmax(0,1fr)}}
+.lab{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:0 0 8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-bottom:22px}
+.stats div{background:var(--paper);padding:8px 10px}
+.stats dt{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.stats dd{margin:0;font-family:var(--mono);font-size:1.05rem;font-variant-numeric:tabular-nums}
+.heatwrap{overflow-x:auto;border:1px solid var(--rule);background:var(--panel);padding:8px;margin-bottom:22px}
+#heat{display:block;cursor:crosshair}
+.daynav{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.daynav .dlabel{font-family:var(--body);font-size:1.05rem;margin-right:auto;min-width:0}
+.daynav .dlabel small{font-family:var(--mono);font-size:.7rem;color:var(--mute);margin-left:6px}
+.grid{display:grid;grid-template-columns:34px repeat(12,minmax(0,1fr));gap:2px;font-family:var(--mono);font-size:.6rem;color:var(--mute);font-variant-numeric:tabular-nums}
+.grid .hl{display:flex;align-items:center}
+.grid .ml{text-align:center}
+.c{height:17px;border:0;border-radius:1px;padding:0;cursor:pointer;background:var(--cell-future);box-shadow:inset 0 0 0 1px var(--rule)}
+.c.elapsed{background:var(--cell-elapsed);box-shadow:none}
+.c.written{background:color-mix(in srgb,var(--accent) calc(var(--q,.5)*100%),var(--cell-elapsed));box-shadow:none}
+.c.ana{background:var(--cold);box-shadow:none}
+.c.ext{background:transparent;box-shadow:inset 0 0 0 2px var(--accent)}
+.c.now{box-shadow:inset 0 0 0 2px var(--ink)}
+.c.sel{outline:2px solid var(--ink);outline-offset:1px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-family:var(--mono);font-size:.66rem;color:var(--mute)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:1px}
+.insp{border:1px solid var(--rule);background:var(--panel);padding:14px 16px;margin-bottom:22px}
+.insp h3{margin:0;font-family:var(--mono);font-weight:500;font-size:1rem;font-variant-numeric:tabular-nums}
+.insp .when{font-size:.92rem;color:var(--mute);margin:2px 0 10px}
+.pill{display:inline-block;font-family:var(--mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:2px;border:1px solid currentColor;margin-bottom:10px}
+.pill.written{color:var(--accent)} .pill.ana{color:var(--cold)} .pill.ext{color:var(--accent)} .pill.now{color:var(--ink)} .pill.elapsed,.pill.future{color:var(--mute)}
+.itext{font-family:var(--body);font-size:.95rem;white-space:pre-wrap;max-height:180px;overflow:auto;border-left:2px solid var(--rule);padding-left:10px;margin:6px 0 12px}
+.meas{display:grid;grid-template-columns:auto auto;justify-content:start;gap:3px 18px;font-family:var(--mono);font-size:.76rem;font-variant-numeric:tabular-nums;margin:0 0 12px}
+.meas dt{color:var(--mute)} .meas dd{margin:0}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.btn.danger{border-color:var(--accent);color:var(--accent)}
+.cut{font-family:var(--body);font-size:.98rem;font-style:italic;min-height:3em;margin:6px 0 10px}
+.about{font-size:.86rem;line-height:1.55;color:var(--mute)}
+.about dl{margin:0;display:grid;gap:9px}
+.about dt{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+.about dt em{font-style:normal;color:var(--mute);text-transform:none;letter-spacing:0}
+.about dd{margin:0}
+
+/* FIELD (single dark look by design) */
+.field{max-width:1180px;margin:0 auto;padding-top:18px}
+.screen{position:relative;height:min(72vh,660px);min-height:380px;background:var(--f-bg);border-radius:3px;overflow:hidden;touch-action:none;cursor:grab}
+.screen:active{cursor:grabbing}
+#fc{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;left:12px;top:10px;margin:0;font-family:var(--mono);font-size:.68rem;line-height:1.5;color:var(--f-bone);opacity:.85;pointer-events:none;white-space:pre-wrap;max-width:calc(100% - 24px);text-shadow:0 0 6px var(--f-bg)}
+.hover{position:absolute;right:12px;top:10px;margin:0;font-family:var(--mono);font-size:.68rem;line-height:1.5;color:var(--f-flesh);text-align:right;pointer-events:none;white-space:pre-wrap;max-width:45%;text-shadow:0 0 6px var(--f-bg)}
+.ticker{position:absolute;left:12px;right:12px;bottom:10px;margin:0;font-family:var(--mono);font-size:.74rem;color:var(--f-flesh);pointer-events:none;text-shadow:0 0 6px var(--f-bg);transition:opacity .6s}
+.fctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;font-family:var(--mono);font-size:.7rem;color:var(--mute)}
+.fctl .hint{margin-left:auto}
+@media (prefers-reduced-motion: reduce){.ticker{transition:none}}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <div class="brand">
+      <h1>bardo lattice</h1>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" id="t-write" aria-selected="true" data-v="write">Write</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button role="tab" id="t-data" aria-selected="false" data-v="data">Array · Data</button>
+      <button role="tab" id="t-field" aria-selected="false" data-v="field">Array · Field</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="v-write" class="write" role="tabpanel" aria-labelledby="t-write">
+    <div class="wbar"><span id="wcount">0 words</span><button id="copyAll" type="button">Copy all text</button></div>
+    <div id="doc"></div>
+    <div id="copyFallback" hidden></div>
+  </section>
+
+  <section id="v-data" class="data" role="tabpanel" aria-labelledby="t-data" hidden>
+    <div>
+      <dl class="stats" id="stats"></dl>
+      <p class="lab">The year · days across, hours down</p>
+      <div class="heatwrap"><canvas id="heat" aria-label="Year heatmap: click a day and hour"></canvas></div>
+      <div class="daynav">
+        <div class="dlabel" id="dlabel"></div>
+        <button class="btn" id="prevDay" type="button">‹ Previous day</button>
+        <button class="btn" id="today" type="button">Today</button>
+        <button class="btn" id="nextDay" type="button">Next day ›</button>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="legend">
+        <span><i style="background:var(--cell-future);box-shadow:inset 0 0 0 1px var(--rule)"></i>Not yet</span>
+        <span><i style="background:var(--cell-elapsed)"></i>Elapsed, unwritten</span>
+        <span><i style="background:var(--accent)"></i>Written</span>
+        <span><i style="background:var(--cold)"></i>Edited from later</span>
+        <span><i style="box-shadow:inset 0 0 0 2px var(--accent)"></i>Extinguished</span>
+        <span><i style="box-shadow:inset 0 0 0 2px var(--ink)"></i>Now</span>
+      </div>
+    </div>
+    <div>
+      <p class="lab">Cell</p>
+      <div class="insp" id="insp"></div>
+      <p class="lab">Cut-up</p>
+      <div class="insp">
+        <div class="cut" id="cut">Pick a day with writing in it, then cut it up.</div>
+        <div class="acts">
+          <button class="btn" id="cutDay" type="button">Cut up this day</button>
+          <button class="btn" id="cutYear" type="button">Cut up the year</button>
+        </div>
+      </div>
+      <p class="lab">How the array computes</p>
+      <div class="about">
+        <dl>
+          <div><dt>Size</dt><dd>One cell for every five minutes of the current year: days × 24 hours × 12 slots. The dimensions come from the clock, leap years included, and the days before your first instance are in the array whether or not you lived them here.</dd></div>
+          <div><dt>Seal</dt><dd>Every five minutes the open cell closes. Your next keystroke after a word ends starts a new block in the new cell, and a light timestamp appears the way a chat thread marks time.</dd></div>
+          <div><dt>Instance <em>· rebirth</em></dt><dd>Each opening of the program is a new instance. Every cell records which instances passed through it.</dd></div>
+          <div><dt>Pause <em>· Lynch</em></dt><dd>The longest silence between keystrokes inside one cell. Duration is measured, not skipped.</dd></div>
+          <div><dt>Excision <em>· Cronenberg</em></dt><dd>Every character you delete is counted against the cell whose text you cut. The body of the text keeps its scars.</dd></div>
+          <div><dt>Edits from later <em>· Dick</em></dt><dd>Revising a sealed block writes into a cell whose time has already ended. The array records it, and the cell turns cold blue. Time here runs both ways.</dd></div>
+          <div><dt>Cut-up <em>· Burroughs &amp; Gysin</em></dt><dd>Text from the array, cut into short runs and reshuffled, so the lines say what the writer did not plan to.</dd></div>
+          <div><dt>Extinguish <em>· nirvāṇa, "blowing out"</em></dt><dd>Removes a cell's text and keeps its trace. The cell stays marked, and empty. It cannot be undone.</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="v-field" class="field" role="tabpanel" aria-labelledby="t-field" hidden>
+    <div class="screen" id="screen">
+      <canvas id="fc" aria-label="Live ASCII rendering of the year array"></canvas>
+      <pre class="hud" id="hud"></pre>
+      <pre class="hover" id="hover"></pre>
+      <p class="ticker" id="ticker"></p>
+    </div>
+    <div class="fctl">
+      <button class="btn" id="spin" type="button">Pause rotation</button>
+      <button class="btn" id="zin" type="button">Zoom in</button>
+      <button class="btn" id="zout" type="button">Zoom out</button>
+      <button class="btn" id="reset" type="button">Reset view</button>
+      <span class="hint">Drag to turn the array. Click a glyph to inspect its cell.</span>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'bardo-lattice-v1';
+const SLOT = 5 * 60 * 1000;
+const Y = new Date().getFullYear();
+const LEAP = (Y % 4 === 0 && Y % 100 !== 0) || Y % 400 === 0;
+const D = LEAP ? 366 : 365, H = 24, S = 12, PER_DAY = H * S, N = D * PER_DAY;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+
+/* ---------- time ↔ array ---------- */
+const doy = dt => Math.round((Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()) - Date.UTC(dt.getFullYear(), 0, 1)) / 864e5);
+const keyOf = (y, d, h, s) => y + ':' + d + ':' + h + ':' + s;
+const idxOf = (d, h, s) => d * PER_DAY + h * S + s;
+const dhs = i => { const d = (i / PER_DAY) | 0, r = i - d * PER_DAY; return [d, (r / S) | 0, r % S]; };
+const startOf = (y, d, h, s) => new Date(y, 0, 1 + d, h, s * 5).getTime();
+function cellAt(ms) {
+  const dt = new Date(ms), y = dt.getFullYear(), d = doy(dt), h = dt.getHours(), s = Math.floor(dt.getMinutes() / 5);
+  return { y, d, h, s, key: keyOf(y, d, h, s), i: idxOf(d, h, s) };
+}
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+const coord = (d, h, s) => `[${pad(d, 3)}][${pad(h)}][${pad(s)}]`;
+const fmtTime = dt => dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const fmtDate = dt => dt.toLocaleDateString(undefined, dt.getFullYear() === Y
+  ? { weekday: 'long', month: 'long', day: 'numeric' } : { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const dayStr = ms => new Date(ms).toDateString();
+const fmtDur = ms => { const t = Math.round(ms / 1000); return Math.floor(t / 60) + ':' + pad(t % 60); };
+const nf = n => n.toLocaleString();
+
+/* ---------- state ---------- */
+function load() { try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+let st = load();
+if (!st || !Array.isArray(st.blocks)) st = { v: 1, blocks: [], cells: {}, instances: [] };
+const INST = st.instances.length + 1;
+st.instances.push({ n: INST, t: Date.now() });
+let saveT;
+function saveNow() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+function save() { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); }
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+function touch(key) {
+  let c = st.cells[key];
+  if (!c) c = st.cells[key] = { k: 0, x: 0, dw: 0, an: 0, inst: [], ext: 0 };
+  if (!c.inst.includes(INST)) c.inst.push(INST);
+  return c;
+}
+
+/* ---------- index of the array (current year) ---------- */
+let idx = { written: new Map(), ext: new Set(), ana: new Set(), kOf: new Map() };
+function buildIndex() {
+  const w = new Map();
+  for (const b of st.blocks) {
+    if (b.y !== Y || !b.text.trim()) continue;
+    const i = idxOf(b.d, b.h, b.s);
+    (w.get(i) || w.set(i, []).get(i)).push(b);
+  }
+  const ext = new Set(), ana = new Set(), kOf = new Map();
+  for (const k in st.cells) {
+    const [y, d, h, s] = k.split(':').map(Number);
+    if (y !== Y) continue;
+    const c = st.cells[k], i = idxOf(d, h, s);
+    if (w.has(i)) { kOf.set(i, c.k); if (c.an > 0) ana.add(i); }
+    else if (c.ext) ext.add(i);
+  }
+  idx = { written: w, ext, ana, kOf };
+  F.dirty = true;
+}
+function stateOf(i, nowI) {
+  if (i === nowI) return 'now';
+  if (idx.written.has(i)) return idx.ana.has(i) ? 'ana' : 'written';
+  if (idx.ext.has(i)) return 'ext';
+  return i < nowI ? 'elapsed' : 'future';
+}
+
+/* ---------- editor ---------- */
+const docEl = $('#doc');
+const els = new Map();
+const byId = id => st.blocks.find(b => b.id === id);
+const tail = () => st.blocks[st.blocks.length - 1];
+let uidN = 0;
+const uid = () => Date.now().toString(36) + (uidN++).toString(36) + Math.random().toString(36).slice(2, 5);
+
+function assign(b, c) { b.y = c.y; b.d = c.d; b.h = c.h; b.s = c.s; b.key = c.key; b.t0 = Date.now(); touch(b.key); }
+function mkEl(b) {
+  const sec = document.createElement('section'); sec.className = 'blk'; sec.dataset.id = b.id;
+  const stamp = document.createElement('div'); stamp.className = 'stamp';
+  const stText = document.createElement('span');
+  const coordEl = document.createElement('span'); coordEl.className = 'coord';
+  stamp.append(stText, coordEl);
+  const ta = document.createElement('textarea'); ta.className = 'ta'; ta.rows = 1; ta.dataset.id = b.id;
+  ta.id = 'ta-' + b.id; ta.setAttribute('aria-label', 'Block');
+  ta.value = b.text;
+  sec.append(stamp, ta); docEl.append(sec);
+  const e = { sec, stamp, stText, coordEl, ta }; els.set(b.id, e);
+  return e;
+}
+function addBlock(c) {
+  const b = { id: uid(), y: c.y, d: c.d, h: c.h, s: c.s, key: c.key, t0: Date.now(), text: '', inst: INST };
+  st.blocks.push(b); touch(b.key); mkEl(b); relabel(); return b;
+}
+function removeBlock(b) {
+  const e = els.get(b.id); if (e) e.sec.remove(); els.delete(b.id);
+  st.blocks.splice(st.blocks.indexOf(b), 1);
+}
+function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+
+/* chat-style stamps: full date on a new day; a time after a seemingly arbitrary run of minutes or blocks */
+function relabel() {
+  let lastShown = -Infinity, since = 0, prev = null;
+  const t = tail();
+  for (const b of st.blocks) {
+    const e = els.get(b.id); if (!e) continue;
+    const dt = new Date(b.t0); let label = '';
+    if (!prev || dayStr(prev.t0) !== dayStr(b.t0)) { label = fmtDate(dt) + ' · ' + fmtTime(dt); lastShown = b.t0; since = 0; }
+    else if (b.t0 - lastShown >= 20 * 60000 || since >= 6) { label = fmtTime(dt); lastShown = b.t0; since = 0; }
+    since++;
+    e.stText.textContent = label;
+    e.stamp.classList.toggle('labeled', !!label);
+    e.coordEl.textContent = coord(b.d, b.h, b.s) + (b.y !== Y ? ' ' + b.y : '');
+    e.ta.placeholder = b === t && st.blocks.length === 1 ? 'Write. Every five minutes the cell you are writing in seals.' : '';
+    prev = b;
+  }
+}
+function wordCount() {
+  let n = 0; for (const b of st.blocks) { const m = b.text.match(/\S+/g); if (m) n += m.length; }
+  $('#wcount').textContent = nf(n) + (n === 1 ? ' word' : ' words') + ' · ' + st.blocks.filter(b => b.text.trim()).length + ' cells written';
+}
+
+let lastInput = 0, lastKey = null;
+function record(b, deleted) {
+  const c = touch(b.key), t = Date.now();
+  c.k++; c.x += deleted;
+  if (lastKey === b.key && lastInput) c.dw = Math.max(c.dw, t - lastInput);
+  if (cellAt(t).key !== b.key) c.an++;
+  lastInput = t; lastKey = b.key;
+}
+
+docEl.addEventListener('beforeinput', e => {
+  const ta = e.target; if (!ta.classList || !ta.classList.contains('ta') || e.isComposing) return;
+  const b = byId(ta.dataset.id); if (b !== tail()) return;
+  const c = cellAt(Date.now()); if (b.key === c.key) return;
+  if (!b.text.trim()) { assign(b, c); relabel(); return; }
+  const t = e.inputType;
+  if (!(t === 'insertText' || t === 'insertLineBreak' || t === 'insertParagraph')) return;
+  if (ta.selectionStart !== ta.value.length || ta.selectionEnd !== ta.value.length) return;
+  const data = e.data || '';
+  if (t === 'insertText' && /\S$/.test(b.text) && /^\S/.test(data)) return; // let the word finish first
+  e.preventDefault();
+  const nb = addBlock(c), ne = els.get(nb.id);
+  const ins = t === 'insertText' ? data.replace(/^\s+/, '') : '';
+  ne.ta.value = ins; nb.text = ins;
+  ne.ta.focus(); ne.ta.setSelectionRange(ins.length, ins.length);
+  autosize(ne.ta); record(nb, 0); buildIndex(); wordCount(); save();
+});
+docEl.addEventListener('input', e => {
+  const ta = e.target; if (!ta.classList.contains('ta')) return;
+  const b = byId(ta.dataset.id); if (!b) return;
+  const wasEmpty = !b.text.trim(), prevLen = b.text.length;
+  b.text = ta.value; autosize(ta);
+  const diff = b.text.length - prevLen;
+  const deleted = (e.inputType || '').startsWith('delete') ? Math.max(1, -diff) : Math.max(0, -diff);
+  record(b, deleted);
+  if (wasEmpty !== !b.text.trim()) buildIndex();
+  wordCount(); save();
+});
+
+function ensureTail() {
+  const c = cellAt(Date.now()); const t = tail();
+  if (!t) return addBlock(c);
+  if (!t.text.trim()) { assign(t, c); relabel(); return t; }
+  if (t.key !== c.key) return addBlock(c);
+  return t;
+}
+
+/* ---------- copy ---------- */
+function exportText() {
+  const out = [];
+  for (const b of st.blocks) {
+    const e = els.get(b.id); const label = e ? e.stText.textContent : '';
+    if (!b.text.trim()) continue;
+    if (label) out.push((out.length ? '\n' : '') + '— ' + label + ' —');
+    out.push(b.text);
+  }
+  return out.join('\n');
+}
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
+function copyText(text) {
+  const fb = $('#copyFallback');
+  const fallback = () => {
+    fb.innerHTML = ''; const area = document.createElement('textarea'); area.className = 'copybox'; area.id = 'copybox'; area.value = text;
+    fb.append(area); fb.hidden = false; area.focus(); area.select(); toast('Select the text below and copy it');
+  };
+  try {
+    navigator.clipboard.writeText(text).then(() => { fb.hidden = true; toast('Copied'); }, fallback);
+  } catch (e) { fallback(); }
+}
+$('#copyAll').addEventListener('click', () => copyText(exportText()));
+
+/* ---------- views ---------- */
+let view = 'write';
+try { const v = localStorage.getItem(KEY + ':view'); if (v) view = v; } catch (e) {}
+function setView(v) {
+  view = v;
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.v === v));
+  $('#v-write').hidden = v !== 'write'; $('#v-data').hidden = v !== 'data'; $('#v-field').hidden = v !== 'field';
+  try { localStorage.setItem(KEY + ':view', v); } catch (e) {}
+  if (v === 'write') { for (const e of els.values()) autosize(e.ta); }
+  if (v === 'data') renderData();
+  if (v === 'field') startField(); else stopField();
+}
+for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => setView(b.dataset.v));
+
+/* ---------- header readout + the loop over every box ---------- */
+let lastNowKey = null;
+function readout(c, seal) {
+  $('#readout').innerHTML =
+    `<span><b>${Y}</b> · ${D} × ${H} × ${S} = ${nf(N)} cells</span>` +
+    `<span>instance <b>${pad(INST)}</b></span>` +
+    `<span>now <b>${coord(c.d, c.h, c.s)}</b></span>` +
+    `<span>seals in <b>${fmtDur(seal)}</b></span>`;
+}
+function tick() {
+  const t = Date.now(), c = cellAt(t);
+  const seal = startOf(c.y, c.d, c.h, c.s) + SLOT - t;
+  readout(c, seal);
+  const tl = tail(); const kill = [];
+  for (const b of st.blocks) {                       // check each box: has its five minutes run out?
+    const e = els.get(b.id); if (!e) continue;
+    const sealed = b.key !== c.key;
+    e.sec.classList.toggle('open', !sealed);
+    if (sealed && b !== tl && !b.text.trim() && document.activeElement !== e.ta) kill.push(b);
+  }
+  if (tl && !tl.text.trim() && tl.key !== c.key) { assign(tl, c); relabel(); }
+  if (kill.length) { kill.forEach(removeBlock); relabel(); save(); }
+  if (c.key !== lastNowKey) {
+    lastNowKey = c.key;
+    if (c.y !== Y) { saveNow(); location.reload(); return; } // a new year regenerates the array
+    F.dirty = true;
+    if (view === 'data') renderData();
+  }
+}
+
+/* ---------- DATA view ---------- */
+const sel = { d: cellAt(Date.now()).d, i: cellAt(Date.now()).i };
+const gridEl = $('#grid'); const cellBtns = [];
+(function buildGrid() {
+  gridEl.append(document.createElement('span'));
+  for (let s = 0; s < S; s++) { const m = document.createElement('span'); m.className = 'ml'; m.textContent = ':' + pad(s * 5); gridEl.append(m); }
+  for (let h = 0; h < H; h++) {
+    const l = document.createElement('span'); l.className = 'hl'; l.textContent = pad(h) + 'h'; gridEl.append(l);
+    for (let s = 0; s < S; s++) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'c'; b.id = 'c-' + h + '-' + s;
+      b.addEventListener('click', () => { sel.i = idxOf(sel.d, h, s); renderData(); });
+      gridEl.append(b); cellBtns.push(b);
+    }
+  }
+})();
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+function renderStats(nowI) {
+  let anaN = idx.ana.size, inst = st.instances.length;
+  const items = [
+    ['Cells this year', nf(N)], ['Elapsed', nf(Math.min(nowI, N))], ['Written', nf(idx.written.size)],
+    ['Edited from later', nf(anaN)], ['Extinguished', nf(idx.ext.size)], ['Instances', nf(inst)]
+  ];
+  $('#stats').innerHTML = items.map(([a, b]) => `<div><dt>${a}</dt><dd>${b}</dd></div>`).join('');
+}
+
+const HD = 3, HH = 5, HB = 16;
+function drawHeat(nowI) {
+  const cv = $('#heat'), dpr = window.devicePixelRatio || 1;
+  const w = D * HD, h = H * HH + HB;
+  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cFut = cssVar('--cell-future'), cEl = cssVar('--cell-elapsed'), cAcc = cssVar('--accent'), cCold = cssVar('--cold'), cInk = cssVar('--ink'), cMute = cssVar('--mute');
+  ctx.clearRect(0, 0, w, h);
+  const agg = new Float32Array(D * H), ana = new Uint8Array(D * H);
+  for (const i of idx.written.keys()) { const [d, hr] = dhs(i); agg[d * H + hr] += Math.max(1, idx.kOf.get(i) || 1); if (idx.ana.has(i)) ana[d * H + hr] = 1; }
+  for (let d = 0; d < D; d++) for (let hr = 0; hr < H; hr++) {
+    const a = agg[d * H + hr], start = idxOf(d, hr, 0);
+    ctx.globalAlpha = 1;
+    if (a > 0) { ctx.fillStyle = ana[d * H + hr] ? cCold : cAcc; ctx.globalAlpha = .35 + .65 * Math.min(1, a / 150); }
+    else ctx.fillStyle = start <= nowI ? cEl : cFut;
+    ctx.fillRect(d * HD, hr * HH, HD - (d % 7 === 6 ? 1 : 0), HH - 1);
+  }
+  ctx.globalAlpha = 1;
+  const [nd] = dhs(nowI);
+  ctx.fillStyle = cInk; ctx.fillRect(nd * HD, 0, 1, H * HH);
+  ctx.fillRect(sel.d * HD, H * HH + 1, HD, 3);
+  ctx.fillStyle = cMute; ctx.font = '9px ' + cssVar('--mono');
+  const mn = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  for (let m = 0; m < 12; m++) { const d = doy(new Date(Y, m, 1)); ctx.fillRect(d * HD, H * HH + 5, 1, 3); ctx.fillText(mn[m], d * HD + 3, H * HH + 13); }
+}
+$('#heat').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  const d = Math.max(0, Math.min(D - 1, Math.floor((e.clientX - r.left) / HD)));
+  const hr = Math.max(0, Math.min(H - 1, Math.floor((e.clientY - r.top) / HH)));
+  sel.d = d; let pick = idxOf(d, hr, 0);
+  for (let s = 0; s < S; s++) if (idx.written.has(idxOf(d, hr, s))) { pick = idxOf(d, hr, s); break; }
+  sel.i = pick; renderData();
+});
+
+function renderDay(nowI) {
+  const dt = new Date(Y, 0, 1 + sel.d);
+  $('#dlabel').innerHTML = `${fmtDate(dt)}<small>day ${coord(sel.d, 0, 0).slice(0, 5)}</small>`;
+  for (let h = 0; h < H; h++) for (let s = 0; s < S; s++) {
+    const i = idxOf(sel.d, h, s), b = cellBtns[h * S + s], stt = stateOf(i, nowI);
+    let cls = 'c';
+    if (stt === 'now') cls += (idx.written.has(i) ? ' written' : ' elapsed') + ' now';
+    else if (stt !== 'future') cls += ' ' + stt;
+    if (i === sel.i) cls += ' sel';
+    b.className = cls;
+    if (idx.written.has(i)) b.style.setProperty('--q', String(.35 + .65 * Math.min(1, (idx.kOf.get(i) || 1) / 120)));
+    b.setAttribute('aria-label', coord(sel.d, h, s) + ' ' + pad(h) + ':' + pad(s * 5) + ' ' + stt);
+  }
+}
+
+let confirmExt = false;
+function renderInspector(nowI) {
+  const [d, h, s] = dhs(sel.i), key = keyOf(Y, d, h, s), c = st.cells[key], stt = stateOf(sel.i, nowI);
+  const t0 = startOf(Y, d, h, s), a = new Date(t0), b = new Date(t0 + SLOT);
+  const names = { now: 'Open now', written: 'Written', ana: 'Edited from later', ext: 'Extinguished', elapsed: 'Elapsed, unwritten', future: 'Not yet' };
+  const blocks = idx.written.get(sel.i) || [];
+  let html = `<h3>${coord(d, h, s)}</h3><div class="when">${fmtDate(a)}, ${fmtTime(a)}–${fmtTime(b)}</div><span class="pill ${stt}">${names[stt]}</span>`;
+  if (blocks.length) html += `<div class="itext" id="itext"></div>`;
+  else if (stt === 'elapsed') html += `<p class="when">Nothing was written in this cell. Its five minutes have passed.</p>`;
+  else if (stt === 'future') html += `<p class="when">This cell opens ${fmtDate(a)} at ${fmtTime(a)}.</p>`;
+  else if (stt === 'ext') html += `<p class="when">Its text was extinguished. The trace remains.</p>`;
+  else if (stt === 'now') html += `<p class="when">This is the open cell. Anything you write now lands here.</p>`;
+  if (c) {
+    html += `<dl class="meas"><dt>Keystrokes</dt><dd>${nf(c.k)}</dd><dt>Excised characters</dt><dd>${nf(c.x)}</dd>` +
+      `<dt>Longest pause</dt><dd>${c.dw ? fmtDur(c.dw) : '—'}</dd><dt>Edits from later</dt><dd>${nf(c.an)}</dd>` +
+      `<dt>Instances</dt><dd>${c.inst.map(n => '#' + pad(n)).join(' ')}</dd></dl>`;
+  }
+  html += `<div class="acts">`;
+  if (blocks.length) html += `<button class="btn" id="openEd" type="button">Open in editor</button>`;
+  if (blocks.length && !confirmExt) html += `<button class="btn danger" id="extA" type="button">Extinguish cell</button>`;
+  if (blocks.length && confirmExt) html += `<button class="btn danger" id="extB" type="button">Remove this text for good</button><button class="btn" id="extC" type="button">Keep it</button>`;
+  html += `</div>`;
+  const el = $('#insp'); el.innerHTML = html;
+  if (blocks.length) $('#itext').textContent = blocks.map(x => x.text).join('\n');
+  const q = id => el.querySelector(id);
+  q('#openEd') && q('#openEd').addEventListener('click', () => openInEditor(blocks[0]));
+  q('#extA') && q('#extA').addEventListener('click', () => { confirmExt = true; renderInspector(nowI); });
+  q('#extC') && q('#extC').addEventListener('click', () => { confirmExt = false; renderInspector(nowI); });
+  q('#extB') && q('#extB').addEventListener('click', () => { confirmExt = false; extinguish(key); });
+}
+function renderData() {
+  const nowI = cellAt(Date.now()).i;
+  renderStats(nowI); drawHeat(nowI); renderDay(nowI); renderInspector(nowI);
+}
+function shiftDay(n) { sel.d = Math.max(0, Math.min(D - 1, sel.d + n)); const [, h, s] = dhs(sel.i); sel.i = idxOf(sel.d, h, s); confirmExt = false; renderData(); }
+$('#prevDay').addEventListener('click', () => shiftDay(-1));
+$('#nextDay').addEventListener('click', () => shiftDay(1));
+$('#today').addEventListener('click', () => { const c = cellAt(Date.now()); sel.d = c.d; sel.i = c.i; renderData(); });
+
+function openInEditor(b) {
+  setView('write');
+  const e = els.get(b.id); if (!e) return;
+  e.sec.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  e.ta.focus({ preventScroll: true });
+}
+function extinguish(key) {
+  const t = tail();
+  for (const b of st.blocks.filter(x => x.key === key)) {
+    if (b === t) { b.text = ''; const e = els.get(b.id); if (e) { e.ta.value = ''; autosize(e.ta); } }
+    else removeBlock(b);
+  }
+  touch(key).ext = 1;
+  relabel(); buildIndex(); wordCount(); saveNow(); renderData(); toast('Cell extinguished');
+}
+
+/* ---------- cut-up ---------- */
+function cutup(texts, maxWords) {
+  const words = texts.join(' ').split(/\s+/).filter(Boolean);
+  if (words.length < 4) return '';
+  const frags = [];
+  for (let i = 0; i < words.length;) { const n = 2 + Math.floor(Math.random() * 4); frags.push(words.slice(i, i + n).join(' ')); i += n; }
+  for (let i = frags.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [frags[i], frags[j]] = [frags[j], frags[i]]; }
+  const out = []; let n = 0;
+  for (const f of frags) { out.push(f); n += f.split(' ').length; if (n >= maxWords) break; }
+  return out.join(' / ');
+}
+$('#cutDay').addEventListener('click', () => {
+  const texts = st.blocks.filter(b => b.y === Y && b.d === sel.d && b.text.trim()).map(b => b.text);
+  $('#cut').textContent = cutup(texts, 40) || 'This day holds too little text to cut. Write a few lines in it, or pick another day.';
+});
+$('#cutYear').addEventListener('click', () => {
+  const texts = st.blocks.filter(b => b.y === Y && b.text.trim()).map(b => b.text);
+  $('#cut').textContent = cutup(texts, 60) || 'The array holds too little text to cut. Write a few lines first.';
+});
+
+/* ---------- FIELD view: live ASCII projection of the whole array ---------- */
+const F = { a: 0.75, b: -0.42, zoom: 1, auto: !reduce, running: false, dirty: true, drag: null, moved: false,
+  cols: 0, rows: 0, cw: 7, ch: 14, fs: 12, w: 0, h: 0, lists: null, hoverI: -1, raf: 0 };
+let depth, pri, cnt, who;
+const cv = $('#fc'), ctx = cv.getContext('2d'), screen = $('#screen');
+const FC = {};
+function fieldColors() { for (const n of ['--f-bg', '--f-bone', '--f-dim', '--f-flesh', '--f-cold', '--f-now']) FC[n] = cssVar(n); }
+
+function resizeField() {
+  const r = screen.getBoundingClientRect(); if (!r.width) return;
+  const dpr = window.devicePixelRatio || 1;
+  F.w = r.width; F.h = r.height;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  F.fs = r.width < 560 ? 10 : 12;
+  ctx.font = `${F.fs}px ${cssVar('--mono')}`;
+  F.cw = ctx.measureText('M').width || F.fs * 0.6; F.ch = Math.round(F.fs * 1.22);
+  F.cols = Math.max(10, Math.floor(r.width / F.cw)); F.rows = Math.max(10, Math.floor(r.height / F.ch));
+  const n = F.cols * F.rows;
+  depth = new Float32Array(n); pri = new Uint8Array(n); cnt = new Uint16Array(n); who = new Int32Array(n);
+}
+function buildLists(nowI) {
+  const el = []; const fut = [];
+  for (let i = 0; i < Math.min(nowI, N); i++) if (!idx.written.has(i) && !idx.ext.has(i)) el.push(i);
+  for (let d = 0; d < D; d++) for (let h = 0; h < H; h++) for (let s = 0; s < S; s++) {
+    const e = (d === 0 || d === D - 1) + (h === 0 || h === H - 1) + (s === 0 || s === S - 1);
+    const i = idxOf(d, h, s);
+    if (e >= 2 && i > nowI) fut.push(i);
+  }
+  F.lists = { el: Int32Array.from(el), fut: Int32Array.from(fut), nowI };
+  F.dirty = false;
+}
+const RAMP = ' .,:-=+*#';
+function frame(ts) {
+  if (!F.running) return;
+  F.raf = requestAnimationFrame(frame);
+  const nowI = cellAt(Date.now()).i;
+  if (F.dirty || !F.lists || F.lists.nowI !== nowI) buildLists(nowI);
+  if (F.auto && !F.drag) F.a += 0.0022;
+  const { cols, rows, cw, ch } = F, n = cols * rows;
+  depth.fill(1e9); pri.fill(0); cnt.fill(0); who.fill(-1);
+  const ca = Math.cos(F.a), sa = Math.sin(F.a), cb = Math.cos(F.b), sb = Math.sin(F.b);
+  const scale = Math.min(F.w, F.h * 2.1) / 3.6 * F.zoom, cx = F.w / 2, cy = F.h / 2 + 8, dist = 4.2;
+  const plot = (i, p) => {
+    const d = (i / PER_DAY) | 0, r = i - d * PER_DAY, h = (r / S) | 0, s = r - h * S;
+    const x = (d / (D - 1) - .5) * 3.2, y = (h / (H - 1) - .5) * 0.95, z = (s / (S - 1) - .5) * 0.5;
+    const x1 = x * ca + z * sa, z1 = -x * sa + z * ca;
+    const y1 = y * cb - z1 * sb, z2 = y * sb + z1 * cb;
+    const f = dist / (dist + z2);
+    const col = ((cx + x1 * f * scale) / cw) | 0, row = ((cy + y1 * f * scale) / ch) | 0;
+    if (col < 0 || row < 0 || col >= cols || row >= rows) return;
+    const k = row * cols + col;
+    cnt[k]++;
+    if (p > pri[k] || (p === pri[k] && z2 < depth[k])) { pri[k] = p; depth[k] = z2; who[k] = i; }
+  };
+  const L = F.lists;
+  for (let j = 0; j < L.fut.length; j++) plot(L.fut[j], 1);
+  for (let j = 0; j < L.el.length; j++) plot(L.el[j], 2);
+  for (const i of idx.ext) plot(i, 3);
+  for (const i of idx.written.keys()) plot(i, idx.ana.has(i) ? 5 : 4);
+  plot(nowI, 6);
+
+  ctx.fillStyle = FC['--f-bg']; ctx.fillRect(0, 0, F.w, F.h);
+  ctx.textBaseline = 'top';
+  const scan = reduce ? -1 : Math.floor(ts / 45) % (rows + 40);
+  const blink = reduce ? true : Math.floor(ts / 450) % 2 === 0;
+  let nowCol = -1, nowRow = -1;
+  for (let k = 0; k < n; k++) {
+    const p = pri[k]; if (!p) continue;
+    const col = k % cols, row = (k / cols) | 0, z = depth[k];
+    let g, color, alpha = Math.max(.18, Math.min(1, .95 - (z + 1.8) / 3.6 * .65));
+    if (p === 1) { g = '.'; color = FC['--f-dim']; alpha *= .55; }
+    else if (p === 2) { g = RAMP[Math.min(RAMP.length - 1, 1 + Math.floor(Math.log2(cnt[k] + 1)))]; color = FC['--f-bone']; alpha *= .62; }
+    else if (p === 3) { g = '°'; color = FC['--f-flesh']; }
+    else if (p === 4) { const kk = idx.kOf.get(who[k]) || 0; g = kk < 20 ? 'o' : kk < 80 ? 'O' : kk < 200 ? '0' : '@'; color = FC['--f-flesh']; alpha = 1; }
+    else if (p === 5) { g = '%'; color = FC['--f-cold']; alpha = 1; }
+    else { nowCol = col; nowRow = row; continue; }
+    if (who[k] === F.hoverI) { color = FC['--f-now']; alpha = 1; }
+    if (row === scan) alpha = Math.min(1, alpha * 1.8);
+    ctx.globalAlpha = alpha; ctx.fillStyle = color;
+    ctx.fillText(g, col * cw, row * ch);
+  }
+  ctx.globalAlpha = 1;
+  if (nowCol >= 0) {
+    if (blink) { ctx.fillStyle = FC['--f-now']; ctx.fillRect(nowCol * cw, nowRow * ch, cw, ch - 1); }
+    ctx.fillStyle = FC['--f-now']; ctx.fillText(blink ? '' : '@', nowCol * cw, nowRow * ch);
+    ctx.fillText(' < now', (nowCol + 1) * cw, nowRow * ch);
+  }
+}
+function hudText() {
+  const c = cellAt(Date.now());
+  $('#hud').textContent =
+    `${Y} · ${D} × ${H} × ${S} = ${nf(N)} cells\n` +
+    `elapsed ${nf(Math.min(c.i, N))} · written ${nf(idx.written.size)} · extinguished ${nf(idx.ext.size)}\n` +
+    `instance ${pad(INST)} · open cell ${coord(c.d, c.h, c.s)}\n` +
+    `.:=*# elapsed density   o O 0 @ written   % edited from later   ° extinguished`;
+}
+let tickerT;
+function rollTicker() {
+  const texts = st.blocks.filter(b => b.y === Y && b.text.trim()).map(b => b.text);
+  const tk = $('#ticker');
+  const line = cutup(texts, 14);
+  tk.style.opacity = 0;
+  setTimeout(() => { tk.textContent = line ? '> ' + line : '> the array holds no text yet. write, and it will come back to you cut up here.'; tk.style.opacity = 1; }, reduce ? 0 : 500);
+}
+function startField() {
+  if (F.running) return;
+  fieldColors(); resizeField(); hudText(); rollTicker();
+  F.running = true; F.raf = requestAnimationFrame(frame);
+  clearInterval(tickerT); tickerT = setInterval(() => { hudText(); rollTicker(); }, 5000);
+}
+function stopField() { F.running = false; cancelAnimationFrame(F.raf); clearInterval(tickerT); }
+new ResizeObserver(() => { if (F.running) resizeField(); }).observe(screen);
+
+function cellUnder(e) {
+  const r = cv.getBoundingClientRect();
+  const col = Math.floor((e.clientX - r.left) / F.cw), row = Math.floor((e.clientY - r.top) / F.ch);
+  if (!who || col < 0 || row < 0 || col >= F.cols || row >= F.rows) return -1;
+  return who[row * F.cols + col];
+}
+screen.addEventListener('pointerdown', e => { F.drag = { x: e.clientX, y: e.clientY, a: F.a, b: F.b }; F.moved = false; screen.setPointerCapture(e.pointerId); });
+screen.addEventListener('pointermove', e => {
+  if (F.drag) {
+    const dx = e.clientX - F.drag.x, dy = e.clientY - F.drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) F.moved = true;
+    F.a = F.drag.a + dx * 0.008; F.b = Math.max(-1.45, Math.min(1.45, F.drag.b + dy * 0.008));
+    return;
+  }
+  const i = cellUnder(e); F.hoverI = i;
+  if (i < 0) { $('#hover').textContent = ''; return; }
+  const [d, h, s] = dhs(i), nowI = cellAt(Date.now()).i, stt = stateOf(i, nowI);
+  const t0 = new Date(startOf(Y, d, h, s));
+  const words = (idx.written.get(i) || []).map(b => b.text).join(' ').split(/\s+/).filter(Boolean).slice(0, 8).join(' ');
+  $('#hover').textContent = `${coord(d, h, s)}\n${fmtDate(t0)} ${fmtTime(t0)}\n${stt}${words ? '\n"' + words + '…"' : ''}`;
+});
+screen.addEventListener('pointerup', e => {
+  const wasDrag = F.moved; F.drag = null;
+  if (wasDrag) return;
+  const i = cellUnder(e); if (i < 0) return;
+  sel.i = i; sel.d = dhs(i)[0]; confirmExt = false; setView('data');
+});
+screen.addEventListener('pointerleave', () => { if (!F.drag) { F.hoverI = -1; $('#hover').textContent = ''; } });
+$('#spin').addEventListener('click', e => { F.auto = !F.auto; e.currentTarget.textContent = F.auto ? 'Pause rotation' : 'Resume rotation'; });
+if (!F.auto) $('#spin').textContent = 'Resume rotation';
+$('#zin').addEventListener('click', () => F.zoom = Math.min(4, F.zoom * 1.25));
+$('#zout').addEventListener('click', () => F.zoom = Math.max(.4, F.zoom / 1.25));
+$('#reset').addEventListener('click', () => { F.a = .75; F.b = -.42; F.zoom = 1; });
+
+/* theme changes repaint canvases */
+const repaint = () => { fieldColors(); if (view === 'data') renderData(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', repaint);
+new MutationObserver(repaint).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- boot ---------- */
+for (const b of st.blocks) mkEl(b);
+ensureTail();
+relabel(); buildIndex(); wordCount(); saveNow();
+tick(); setInterval(tick, 1000);
+setView(['write', 'data', 'field'].includes(view) ? view : 'write');
+const fontsReady = document.fonts && document.fonts.load ? document.fonts.load('12px "IBM Plex Mono"') : Promise.resolve();
+fontsReady.then(() => { for (const e of els.values()) autosize(e.ta); if (F.running) resizeField(); if (view === 'data') renderData(); }).catch(() => {});
+if (view === 'write') { const t = els.get(tail().id); if (t) t.ta.focus({ preventScroll: true }); }
+})();
+</script>
+</body>
+</html>
